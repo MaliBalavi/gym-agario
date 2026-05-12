@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+    <meta charset="UTF-8">
+    <title>Početna - Gym Agar.io</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1a1a2e;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container {
+            background: #16213e;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 { color: #3498db; margin-bottom: 5px; font-size: 36px;}
+        p.subtitle { font-size: 18px; color: #ccc; margin-bottom: 25px; }
+        .controls {
+            background: #0f3460;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: left;
+            border-left: 5px solid #e94560;
+        }
+        .controls h3 { margin-top: 0; color: #e94560; }
+        .controls ul { margin: 0; padding-left: 20px; color: #ddd; }
+        .controls li { margin-bottom: 10px; line-height: 1.5; }
+        
+        .btn-play {
+            display: inline-block;
+            background: #2ecc71;
+            color: white;
+            padding: 15px 0;
+            font-size: 24px;
+            font-weight: bold;
+            text-decoration: none;
+            border-radius: 8px;
+            transition: 0.3s;
+            margin-bottom: 15px;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.4);
+        }
+        .btn-play:hover { background: #27ae60; transform: scale(1.02); }
+        
+        .btn-logout {
+            display: inline-block;
+            color: #e74c3c;
+            text-decoration: none;
+            font-size: 16px;
+            transition: 0.3s;
+        }
+        .btn-logout:hover { color: #c0392b; text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Dobrodošao, {{ username }}!</h1>
+        <p class="subtitle">Spreman da dominiraš arenom?</p>
+        
+        <div class="controls">
+            <h3>🎮 Kako se igra:</h3>
+            <ul>
+                <li><strong>Kretanje:</strong> Tvoje ćelije automatski prate tvoj kursor miša.</li>
+                <li><strong>Jedenje:</strong> Skupljaj zelene tačkice da bi rastao.</li>
+                <li><strong>Napad:</strong> Pređi preko drugih igrača da ih pojedeš (moraš biti veći od njih).</li>
+                <li><strong>Razdvajanje:</strong> Pritisni <b>SPACE</b> da se podeliš na dva dela i ispališ se unapred. Koristi ovo za brz napad ili bekstvo!</li>
+            </ul>
+        </div>
+
+        <a href="/play" class="btn-play">IGRAJ ODMAH</a><br>
+        <a href="/logout" class="btn-logout">Odjavi se</a>
+    </div>
+</body>
+</html>

@@ -2,15 +2,25 @@
 <html lang="sr">
 <head>
     <meta charset="UTF-8">
-    <title>Gym Agar.io - AI Botovi</title>
+    <title>Gym Agar.io - Multiplayer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #111; overflow: hidden;}
-        canvas { background-color: #2c3e50; border: 2px solid #000; box-shadow: 0 0 20px rgba(0,0,0,0.5); cursor: crosshair; }
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #111; overflow: hidden; }
+        canvas { background-color: #2c3e50; border: 2px solid #000; cursor: crosshair; }
+        #ui { position: absolute; top: 10px; left: 10px; color: white; font-family: Arial; font-weight: bold; z-index: 10;}
+        .logout { color: #e74c3c; text-decoration: none; margin-left: 15px; font-size: 14px;}
+        #leaderboard { position: absolute; top: 40px; left: 10px; background-color: rgba(0, 0, 0, 0.6); color: white; padding: 15px; border-radius: 8px; font-family: Arial, sans-serif; width: 180px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 10; pointer-events: none;}
+        #leaderboard h3 { margin: 0 0 10px 0; font-size: 16px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 5px; }
+        #leaderboard ol { margin: 0; padding-left: 25px; font-size: 14px; }
+        #leaderboard li { margin-bottom: 5px; }
     </style>
 </head>
 <body>
-
+    <div id="ui">Igrač: {{ username }} <a href="/" class="logout">[Nazad u Meni]</a></div>
+    <div id="leaderboard">
+        <h3>Top 10 Igrača</h3>
+        <ol id="leaderboard-list"></ol>
+    </div>
     <canvas id="gameCanvas" width="1000" height="800"></canvas>
 
     <script>
@@ -20,6 +30,7 @@
 
         let mouseX = canvas.width / 2;
         let mouseY = canvas.height / 2;
+        let spacePressed = false; 
         let gameState = null;
 
         canvas.addEventListener('mousemove', (e) => {
@@ -28,118 +39,136 @@
             mouseY = e.clientY - rect.top;
         });
 
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') spacePressed = true; 
+        });
+
         socket.on('state', (state) => {
             gameState = state;
-            draw();
+            updateLeaderboard();
+            requestAnimationFrame(draw); // Koristimo hardware-sko iscrtavanje
         });
+
+        function updateLeaderboard() {
+            if (!gameState || !gameState.l) return;
+            const listHTML = gameState.l.map(p => {
+                const isMe = (p.id === socket.id);
+                return isMe ? `<li><strong style="color: #3498db;">${p.n} (${p.s})</strong></li>` : `<li>${p.n} (${p.s})</li>`;
+            }).join('');
+            document.getElementById('leaderboard-list').innerHTML = listHTML;
+        }
 
         function draw() {
             if (!gameState) return;
-            
+            const myId = socket.id;
+            const me = gameState.p[myId]; // Podaci su kompresovani na backendu (p umesto players)
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const mapW = gameState.m[0]; // m umesto map
+            const mapH = gameState.m[1];
 
-            const px = gameState.human.x;
-            const py = gameState.human.y;
-            const mapW = gameState.map.width;
-            const mapH = gameState.map.height;
+            let px = mapW / 2;
+            let py = mapH / 2;
+            let combinedR = 15;
 
-            const offsetX = canvas.width / 2 - px;
-            const offsetY = canvas.height / 2 - py;
+            if (me && me.c.length > 0) {
+                let sumX = 0, sumY = 0, sumArea = 0;
+                me.c.forEach(c => {
+                    let area = c[2] * c[2]; // Sada je c niz: c[0]=x, c[1]=y, c[2]=r
+                    sumX += c[0] * area;
+                    sumY += c[1] * area;
+                    sumArea += area;
+                });
+                combinedR = Math.sqrt(sumArea); 
+                px = sumX / sumArea; 
+                py = sumY / sumArea; 
+            }
 
             ctx.save();
-            ctx.translate(offsetX, offsetY);
+            let zoom = me ? Math.max(Math.pow(15 / combinedR, 0.4), 0.1) : 0.5;
+            
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(zoom, zoom);
+            ctx.translate(-px, -py);
 
-            // Crtanje granica MAPE
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, mapW, mapH);
-            ctx.strokeStyle = '#e74c3c';
-            ctx.lineWidth = 10;
-            ctx.strokeRect(0, 0, mapW, mapH);
+            // Mapa 
+            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, mapW, mapH);
+            ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 10; ctx.strokeRect(0, 0, mapW, mapH);
 
-            // Crtanje mreže (grid)
-            ctx.strokeStyle = '#ecf0f1';
-            ctx.lineWidth = 1;
-            for(let i = 0; i <= mapW; i += 50) {
-                ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, mapH); ctx.stroke();
-            }
-            for(let i = 0; i <= mapH; i += 50) {
-                ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(mapW, i); ctx.stroke();
-            }
-
-            // Crtanje hrane
+            // OPTIMIZACIJA: BATCH RENDERING HRANE (100x brže od pojedinačnog crtanja)
             ctx.fillStyle = '#2ecc71';
-            gameState.food.forEach(f => {
-                ctx.beginPath();
-                ctx.arc(f[0], f[1], 5, 0, Math.PI * 2); // f[0] is X, f[1] is Y
-                ctx.fill();
-            });
-
-            // Crtanje BOTOVA (Neprijatelji - Narandžasta boja)
-            gameState.bots.forEach(bot => {
-                ctx.fillStyle = '#e67e22'; 
-                ctx.beginPath();
-                ctx.arc(bot.x, bot.y, bot.r, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.strokeStyle = '#d35400';
-                ctx.lineWidth = 3;
-                ctx.stroke();
-            });
-
-            // Crtanje TEBE (Plava boja)
-            ctx.fillStyle = '#3498db';
             ctx.beginPath();
-            ctx.arc(px, py, gameState.human.r, 0, Math.PI * 2);
+            gameState.f.forEach(f => {
+                ctx.moveTo(f[0] + 5, f[1]); // Pomeri olovku na ivicu kruga pre iscrtavanja
+                ctx.arc(f[0], f[1], 5, 0, Math.PI * 2); 
+            });
             ctx.fill();
-            ctx.strokeStyle = '#2980b9';
-            ctx.lineWidth = 3;
-            ctx.stroke();
 
+            // Iscrtavanje igrača
+            for (let id in gameState.p) {
+                let p = gameState.p[id];
+                
+                p.c.forEach((c, index) => {
+                    ctx.beginPath();
+                    ctx.arc(c[0], c[1], c[2], 0, Math.PI * 2);
+                    
+                    if (p.b) { // is_bot
+                        ctx.fillStyle = '#e67e22'; ctx.strokeStyle = '#d35400';
+                    } else if (id === myId) {
+                        ctx.fillStyle = '#3498db'; ctx.strokeStyle = '#2980b9';
+                    } else {
+                        ctx.fillStyle = '#9b59b6'; ctx.strokeStyle = '#8e44ad';
+                    }
+                    
+                    ctx.fill();
+                    ctx.lineWidth = 3 / zoom; 
+                    ctx.stroke();
+
+                    // OPTIMIZACIJA: Izbačen `shadowBlur`. Korišćen `strokeText` za senku
+                    if (index === 0) {
+                        ctx.font = `bold ${14 / zoom}px Arial`;
+                        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        ctx.lineWidth = 3 / zoom;
+                        ctx.strokeStyle = "black";
+                        ctx.strokeText(p.n, c[0], c[1]); // Crni obrub teksta (brza zamena za senku)
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillText(p.n, c[0], c[1]); // Beli tekst preko
+                    }
+                });
+            }
             ctx.restore(); 
 
-            // --- MINIMAPA ---
+            // Minimapa
             const minimapSize = 150;
-            const padding = 20;
-            const miniX = canvas.width - minimapSize - padding;
-            const miniY = canvas.height - minimapSize - padding;
-            
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-            ctx.fillRect(miniX, miniY, minimapSize, minimapSize);
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(miniX, miniY, minimapSize, minimapSize);
+            const miniX = canvas.width - minimapSize - 20;
+            const miniY = canvas.height - minimapSize - 20;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.5)'; ctx.fillRect(miniX, miniY, minimapSize, minimapSize);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'; ctx.lineWidth = 2; ctx.strokeRect(miniX, miniY, minimapSize, minimapSize);
 
             const scaleX = minimapSize / mapW;
             const scaleY = minimapSize / mapH;
             
-            // Crtanje botova na minimapi (Crvene tačke)
-            ctx.fillStyle = '#e74c3c';
-            gameState.bots.forEach(bot => {
-                const bMiniX = miniX + (bot.x * scaleX);
-                const bMiniY = miniY + (bot.y * scaleY);
+            for (let id in gameState.p) {
+                let p = gameState.p[id];
+                let isMe = (id === myId);
+                ctx.fillStyle = p.b ? '#e74c3c' : (isMe ? '#3498db' : '#9b59b6');
+                
+                // Batch crtanje na minimapi
                 ctx.beginPath();
-                ctx.arc(bMiniX, bMiniY, 2, 0, Math.PI * 2);
+                p.c.forEach(c => {
+                    ctx.moveTo(miniX + (c[0] * scaleX), miniY + (c[1] * scaleY));
+                    ctx.arc(miniX + (c[0] * scaleX), miniY + (c[1] * scaleY), isMe ? 4 : 2, 0, Math.PI * 2);
+                });
                 ctx.fill();
-            });
-
-            // Crtanje tebe na minimapi (Plava tačka, malo veća)
-            const playerMiniX = miniX + (px * scaleX);
-            const playerMiniY = miniY + (py * scaleY);
-            ctx.fillStyle = '#3498db';
-            ctx.beginPath();
-            ctx.arc(playerMiniX, playerMiniY, 4, 0, Math.PI * 2);
-            ctx.fill();
+            }
         }
 
         setInterval(() => {
-            let dx = 0;
-            let dy = 0;
-            if (gameState) {
-                dx = mouseX - (canvas.width / 2);
-                dy = mouseY - (canvas.height / 2);
-            }
-            socket.emit('action', {dx: dx, dy: dy});
+            let dx = mouseX - (canvas.width / 2);
+            let dy = mouseY - (canvas.height / 2);
+            socket.emit('action', {dx: dx, dy: dy, split: spacePressed});
+            spacePressed = false; 
         }, 1000 / 30);
     </script>
-
 </body>
 </html>
